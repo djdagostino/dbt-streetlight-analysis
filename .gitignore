@@ -1,0 +1,33 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# dbt build artifacts
+target/
+dbt_packages/
+logs/
+.user.yml
+
+# Local credentials / env
+# profiles.yml may contain real SQL Server credentials — keep it local.
+# A sanitized template lives at profiles.example.yml.
+profiles.yml
+.env
+.env.*
+!.env.example
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini

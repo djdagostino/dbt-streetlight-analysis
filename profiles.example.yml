@@ -1,0 +1,31 @@
+# dbt-sqlserver profile for the streetlight_rental project.
+#
+# dbt looks for profiles.yml in ~/.dbt by default. To use THIS file in-place,
+# either:
+#   - run dbt with:    dbt run --profiles-dir .
+#   - or export env:   DBT_PROFILES_DIR=$(pwd)
+#
+# Fill in the <<TODO>> placeholders before running `dbt debug`.
+
+streetlight_rental:
+  target: dev
+  outputs:
+    dev:
+      type: sqlserver
+      driver: 'ODBC Driver 18 for SQL Server'   # change to 17 if 18 isn't installed
+      server: '<<TODO: SERVERNAME\INSTANCE or hostname>>'
+      port: 1433
+      database: '<<TODO: warehouse database name>>'
+      schema: dbo                                # base schema; dbt appends per-model schemas
+      # --- authentication: pick ONE block ---
+      # Windows / integrated auth:
+      windows_login: true
+      # SQL auth (uncomment and set if not using Windows auth):
+      # user: '<<TODO>>'
+      # password: '<<TODO>>'
+      # Azure AD auth (uncomment if needed):
+      # authentication: ActiveDirectoryInteractive
+      # ---------------------------------------
+      encrypt: true
+      trust_cert: true
+      threads: 4

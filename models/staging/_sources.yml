@@ -1,0 +1,54 @@
+version: 2
+
+sources:
+  - name: wge
+    description: |
+      Westfield Gas & Electric UIS database (WGE.dbo). Cross-database references
+      from this dbt warehouse — same SQL Server instance, different database.
+    database: WGE
+    schema: dbo
+    tables:
+      - name: CSM_Connection_Master
+        description: |
+          One row per (Location, Equipment) connection. Holds connection / disconnection
+          dates, connection status, and Consumption (re-used as the light-count
+          multiplier for rental lights — maps to "Fixed Mult (Rate)" in the legacy Excel).
+        columns:
+          - name: Location
+            description: Customer location identifier.
+            tests:
+              - not_null
+          - name: Equipment
+            description: Equipment / asset tag. Rental + streetlights start with 'zz'.
+            tests:
+              - not_null
+          - name: "Connection Date"
+          - name: "Disconnection Date"
+          - name: "Connection Status"
+            description: Active / Disconnected / etc.
+          - name: Consumption
+            description: |
+              For rental-light connections, this is the number of lights on the
+              connection (FixedMult). Used in the kWh formula as a multiplier.
+
+      - name: CSM_Equipment_Master
+        description: Equipment lookup — gives Equipment Class for each Equipment ID.
+        columns:
+          - name: Equipment
+            tests:
+              - not_null
+          - name: "Equipment Class"
+
+      - name: UM00403
+        description: |
+          Rate history per equipment. Multiple rows per umEquipmentID; the row with
+          the highest umConnectSeq is the currently-effective rate.
+        columns:
+          - name: umLocationID
+          - name: umEquipmentID
+            tests:
+              - not_null
+          - name: umConnectSeq
+            description: Sequence number; highest = latest rate.
+          - name: UMTAR1
+            description: Billing rate code (e.g., E0250C). FK to seed rate_wattage.BillRate.
