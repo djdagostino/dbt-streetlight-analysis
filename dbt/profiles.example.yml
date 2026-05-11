@@ -1,31 +1,25 @@
-# dbt-sqlserver profile for the streetlight_rental project.
+# dbt-sqlserver profile template for the streetlight_rental project.
 #
-# dbt looks for profiles.yml in ~/.dbt by default. To use THIS file in-place,
-# either:
-#   - run dbt with:    dbt run --profiles-dir .
-#   - or export env:   DBT_PROFILES_DIR=$(pwd)
-#
-# Fill in the <<TODO>> placeholders before running `dbt debug`.
+# Real values live in .env (gitignored). This file is committed and serves as
+# a reference for anyone cloning the repo. Do NOT put credentials here.
 
 streetlight_rental:
   target: dev
   outputs:
     dev:
       type: sqlserver
-      driver: 'ODBC Driver 18 for SQL Server'   # change to 17 if 18 isn't installed
-      server: '<<TODO: SERVERNAME\INSTANCE or hostname>>'
+      driver:   "{{ env_var('SQLSERVER_ODBC_DRIVER', 'ODBC Driver 18 for SQL Server') }}"
+      server:   "{{ env_var('WAREHOUSE_SERVER') }}"
       port: 1433
-      database: '<<TODO: warehouse database name>>'
-      schema: dbo                                # base schema; dbt appends per-model schemas
-      # --- authentication: pick ONE block ---
-      # Windows / integrated auth:
+      database: "{{ env_var('WAREHOUSE_DATABASE') }}"
+      schema: dbo
+      # If WAREHOUSE_USER is set in .env, SQL auth; otherwise Windows auth.
+      {% if env_var('WAREHOUSE_USER', '') %}
+      user:     "{{ env_var('WAREHOUSE_USER') }}"
+      password: "{{ env_var('WAREHOUSE_PASSWORD') }}"
+      {% else %}
       windows_login: true
-      # SQL auth (uncomment and set if not using Windows auth):
-      # user: '<<TODO>>'
-      # password: '<<TODO>>'
-      # Azure AD auth (uncomment if needed):
-      # authentication: ActiveDirectoryInteractive
-      # ---------------------------------------
+      {% endif %}
       encrypt: true
       trust_cert: true
       threads: 4

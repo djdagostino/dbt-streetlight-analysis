@@ -3,52 +3,51 @@ version: 2
 sources:
   - name: wge
     description: |
-      Westfield Gas & Electric UIS database (WGE.dbo). Cross-database references
-      from this dbt warehouse — same SQL Server instance, different database.
-    database: WGE
-    schema: dbo
+      Local replica of selected WGE (UIS) tables, written into
+      <warehouse_db>.raw.* by ingest/sync_wge.py. The script filters to
+      rental-light / streetlight equipment (Equipment prefix 'zz') at ingest
+      time, so downstream models can assume that scope.
+    database: "{{ env_var('WAREHOUSE_DATABASE') }}"
+    schema: raw
     tables:
-      - name: CSM_Connection_Master
-        description: |
-          One row per (Location, Equipment) connection. Holds connection / disconnection
-          dates, connection status, and Consumption (re-used as the light-count
-          multiplier for rental lights — maps to "Fixed Mult (Rate)" in the legacy Excel).
+      - name: csm_connection_master
+        description: Connection facts — one row per (Location, Equipment) connection.
         columns:
-          - name: Location
+          - name: location_id
             description: Customer location identifier.
             tests:
               - not_null
-          - name: Equipment
-            description: Equipment / asset tag. Rental + streetlights start with 'zz'.
+          - name: equipment_id
+            description: Equipment / asset tag. All rows start with 'zz'.
             tests:
               - not_null
-          - name: "Connection Date"
-          - name: "Disconnection Date"
-          - name: "Connection Status"
+          - name: connection_date
+          - name: disconnection_date
+            description: 1900-01-01 sentinel = currently connected.
+          - name: connection_status
             description: Active / Disconnected / etc.
-          - name: Consumption
-            description: |
-              For rental-light connections, this is the number of lights on the
-              connection (FixedMult). Used in the kWh formula as a multiplier.
+          - name: fixed_mult
+            description: Number of lights on this connection (multiplier for kWh).
 
-      - name: CSM_Equipment_Master
-        description: Equipment lookup — gives Equipment Class for each Equipment ID.
+      - name: csm_equipment_master
+        description: Equipment Class lookup, scoped to streetlight equipment.
         columns:
-          - name: Equipment
+          - name: equipment_id
             tests:
+              - unique
               - not_null
-          - name: "Equipment Class"
+          - name: equip_class
 
-      - name: UM00403
+      - name: um00403
         description: |
-          Rate history per equipment. Multiple rows per umEquipmentID; the row with
-          the highest umConnectSeq is the currently-effective rate.
+          Rate history per equipment. Multiple rows per equipment_id; the row
+          with the highest connect_seq is the currently-effective rate.
         columns:
-          - name: umLocationID
-          - name: umEquipmentID
+          - name: equipment_id
             tests:
               - not_null
-          - name: umConnectSeq
+          - name: location_id
+          - name: connect_seq
             description: Sequence number; highest = latest rate.
-          - name: UMTAR1
-            description: Billing rate code (e.g., E0250C). FK to seed rate_wattage.BillRate.
+          - name: rate1
+            description: Billing rate code (e.g., E0250C). FK to seed rate_wattage.bill_rate.
