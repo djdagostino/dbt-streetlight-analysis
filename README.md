@@ -200,6 +200,72 @@ Pulled by `sync_wge.py`, filtered to `LEFT(Equipment, 2) = 'zz'` at ingest:
   full history; `int_connection_information` is the first place it's narrowed
   to active connections.
 
+## Production deployment (Docker + ofelia)
+
+For monthly unattended runs, the ingest + dbt pipeline is packaged into a
+single Docker image and triggered by `ofelia` (docker-native cron) on the 1st
+of each month.
+
+### Files involved
+
+| File | Purpose |
+|---|---|
+| `Dockerfile` | `python:3.12-slim` + MS ODBC Driver 17 + pinned Python deps + project source. CMD runs `ingest/run.sh`. |
+| `requirements.txt` | Python deps pinned to match the dev venv. |
+| `.dockerignore` | Excludes `.env`, `.venv`, dbt build artifacts, and the local `profiles.yml` from the image. |
+| `ingest/run.sh` | Container entrypoint: `sync_wge.py` → `dbt seed` → `dbt run` → `dbt test`. |
+| `docker-compose.yml` | Two services: `streetlight-ingest` (sleeps + holds env vars) and `ofelia` (runs `bash /app/ingest/run.sh` inside ingest on schedule). |
+
+### Build and push the image
+
+From the repo root on your dev machine:
+
+```bash
+docker build -t dddagostino/streetlight-ingest:1.0.0 .
+docker push dddagostino/streetlight-ingest:1.0.0
+```
+
+Bump the tag (e.g. `1.0.1`) for any subsequent release and update
+`docker-compose.yml` to match before deploying.
+
+### Deploy on the CMS Linux server
+
+```bash
+# 1. Copy deployment files to the server
+scp docker-compose.yml <user>@<server>:/home/appdev/streetlight-ingest/docker-compose.yml
+scp .env                <user>@<server>:/home/appdev/streetlight-ingest/.env
+
+# 2. On the server
+cd /home/appdev/streetlight-ingest
+docker login
+docker compose pull
+docker compose up -d
+```
+
+After `docker compose up -d`:
+
+- `streetlight-ingest` is running `sleep infinity` (holds env + filesystem)
+- `streetlight-ofelia` is watching the docker socket
+- On `0 0 6 1 * *` (06:00 UTC on the 1st of each month), ofelia executes
+  `bash /app/ingest/run.sh` inside the ingest container
+
+### Test the schedule manually
+
+To trigger a run on demand without waiting for the cron:
+
+```bash
+docker exec streetlight-ingest bash /app/ingest/run.sh
+```
+
+That executes the same script ofelia would, with the same env vars.
+
+### Logs
+
+```bash
+docker logs streetlight-ofelia                  # scheduler events
+docker logs streetlight-ingest --tail 200       # last refresh output
+```
+
 ## Secrets policy
 
 - `.env` and `profiles.yml` are gitignored. Never commit them.

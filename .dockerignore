@@ -1,0 +1,34 @@
+# Local dev environment
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Secrets - never bake into images
+.env
+.env.*
+!.env.example
+
+# dbt local profiles file (use profiles.example.yml in the image instead)
+dbt/profiles.yml
+
+# dbt build artifacts (we run `dbt deps` in the Dockerfile)
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# Git / editor / OS
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Docs - keep image lean
+README.md
+
+# Activate.ps1 is a Windows shell helper; not relevant inside Linux container
+Activate.ps1

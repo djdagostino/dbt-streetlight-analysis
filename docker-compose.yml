@@ -1,0 +1,48 @@
+# docker-compose.yml — streetlight ingest + ofelia scheduler.
+#
+# Two services on the CMS Linux server:
+#   1. streetlight-ingest: the container with WGE -> raw + dbt run logic.
+#      Stays alive (sleep infinity) so ofelia can exec into it on schedule.
+#   2. ofelia: docker-native cron scheduler. Reads its job config from
+#      labels on the ingest service. On the 1st of each month at 06:00 UTC,
+#      it runs `bash /app/ingest/run.sh` inside the ingest container.
+#
+# Deployment on the server:
+#   1. Place this file + .env (production values) in a directory
+#   2. docker login
+#   3. docker compose pull
+#   4. docker compose up -d
+#
+# Update workflow:
+#   - Rebuild image -> push to Docker Hub with new tag
+#   - Bump image tag below
+#   - On server: docker compose pull && docker compose up -d
+
+services:
+
+  streetlight-ingest:
+    image: dddagostino/streetlight-ingest:1.0.0
+    container_name: streetlight-ingest
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Keep alive so ofelia can exec the run.sh script on schedule.
+    command: ["sleep", "infinity"]
+    labels:
+      ofelia.enabled: "true"
+      # cron expression (ofelia uses 6-field cron: sec min hour day month dow)
+      # 0 0 6 1 * *  =  06:00 UTC on the 1st of every month
+      ofelia.job-exec.monthly-refresh.schedule: "0 0 6 1 * *"
+      ofelia.job-exec.monthly-refresh.command: "bash /app/ingest/run.sh"
+      ofelia.job-exec.monthly-refresh.tty: "false"
+      ofelia.job-exec.monthly-refresh.no-overlap: "true"
+
+  ofelia:
+    image: mcuadros/ofelia:latest
+    container_name: streetlight-ofelia
+    restart: unless-stopped
+    depends_on:
+      - streetlight-ingest
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro

@@ -1,0 +1,6 @@
+# Python dependencies for the ingest + dbt container.
+# Pinned to match the local .venv that the analyst uses for dev parity.
+
+pyodbc==5.1.0
+dbt-core==1.11.9
+dbt-sqlserver==1.9.0
