@@ -266,6 +266,144 @@ docker logs streetlight-ofelia                  # scheduler events
 docker logs streetlight-ingest --tail 200       # last refresh output
 ```
 
+## Making changes
+
+Day-to-day maintenance falls into two categories with very different blast
+radii: pure dbt changes (most common, ~90% of the time) and changes that
+touch the raw ingest layer (rarer, more involved).
+
+### Category A — dbt-only changes
+
+Anything inside `dbt/`: model SQL, seed CSVs, tests, the mart's column shape,
+the kWh formula, renaming columns, adding a dimension. None of this touches
+the Python ingest or `raw.*` table schema.
+
+**Why dbt is forgiving here:** marts are `materialized: table`, so every
+`dbt run` drops and recreates them. Schema can change however you want — add
+columns, rename them, change types, change formulas — with no `ALTER TABLE`
+to write. Edit the model, run dbt, done.
+
+**The cycle:**
+
+```powershell
+# 1. Edit a .sql or .csv file in dbt/
+
+# 2. Iterate locally — your venv hits the SAME warehouse the container does
+. .\Activate.ps1
+dbt run  -s <model_name>          # rebuild just the model you changed
+dbt test -s <model_name>          # run its tests
+
+# 3. Verify in SSMS:
+#    SELECT TOP 10 * FROM <schema>.<model_name>
+
+# 4. Commit + push to GitHub
+git add dbt/
+git commit -m "feat(mart): add light_type column"
+git push
+
+# 5. Rebuild + push the image with a bumped tag
+docker build -t dddagostino/streetlight-ingest:1.0.1 .
+docker push dddagostino/streetlight-ingest:1.0.1
+
+# 6. Bump the tag in docker-compose.yml; scp + ssh to the server
+#    Then on the server:
+docker compose pull
+docker compose up -d
+```
+
+**Concrete example — adding `light_type` to the mart:**
+
+```sql
+-- in dbt/models/marts/fct_rental_light_monthly_kwh.sql
+
+-- conn_w CTE already joins stg_rate_wattage; just expose more columns:
+rw.light_type,
+
+-- in the final SELECT, add:
+light_type as [LightType],
+
+-- in the GROUP BY, add:
+light_type,
+```
+
+Then `dbt run -s fct_rental_light_monthly_kwh` and check the new column in
+SSMS. If it looks right, commit and cut a new image tag.
+
+### Category B — schema changes in `raw.*`
+
+This is when you need data from WGE that we're not currently fetching — a
+column we ignore, or a new table entirely. The change touches both the
+Python ingest and the dbt layers, so coordination is required.
+
+**The cycle:**
+
+```bash
+# 1. Add the column to ingest/ddl/02_create_raw_tables.sql for future re-creates
+
+# 2. ALTER the existing table in SSMS — the DDL script is idempotent (guarded
+#    by IF OBJECT_ID IS NULL) and won't add new columns to existing tables:
+#       ALTER TABLE raw.csm_connection_master ADD billing_class varchar(32) NULL;
+
+# 3. Update ingest/sync_wge.py — add the column to the SELECT in SYNC_PLAN
+#    and to the `columns` list (the INSERT target)
+
+# 4. Update dbt/models/staging/_sources.yml to document the new column
+
+# 5. Update dbt/models/staging/stg_csm_connection_master.sql to expose it
+
+# 6. Update downstream intermediate / mart models as needed
+
+# 7. Test locally:
+python ingest/sync_wge.py
+dbt run
+
+# 8. Commit, rebuild image with bumped tag, push, deploy
+```
+
+Schema changes in `raw.*` are **persistent** (`ALTER TABLE`), unlike dbt
+models which rebuild from scratch on every run. That's intentional: source
+data should be stable, derived data should be cheap to rebuild.
+
+### Image tag discipline
+
+Never reuse a tag. Docker Hub caches by tag, the deployment server may have a
+cached layer, and re-pushing the same tag turns minor issues into debugging
+nightmares.
+
+| Change kind | Tag bump |
+|---|---|
+| Bug fix in a model | `1.0.0` → `1.0.1` |
+| New column / feature in the mart | `1.0.1` → `1.1.0` |
+| Breaking change (column MDM consumes is renamed/removed) | `1.1.0` → `2.0.0` |
+
+Two places to update the tag for each release:
+
+- The `docker build -t dddagostino/streetlight-ingest:<tag> .` command
+- The `image:` line in `docker-compose.yml`
+
+### Gotchas
+
+1. **Local `dbt run` writes to the same database as production.** There's
+   currently a single `dev` target pointed at `StreetLightAnalytics`.
+   Experimental changes locally affect anything reading the mart in real
+   time. Mitigation when needed: add a second target in `profiles.yml` (e.g.
+   `dev` → `StreetLightAnalytics_Dev`, `prod` → `StreetLightAnalytics`) and
+   run `dbt run --target dev` for iteration. The container always uses `prod`.
+
+2. **`dbt seed` reloads CSVs every container run.** Edit a CSV in
+   `dbt/seeds/` → the next scheduled run will reload it. Your local
+   PowerShell-driven runs only pick up seed changes when you re-run
+   `dbt seed` yourself.
+
+3. **GitHub is the source of truth for code; Docker Hub is for what's
+   deployed.** Pushing to GitHub doesn't update production. The image has to
+   be rebuilt, pushed, pulled by the server, and the container recreated for
+   any code change to actually take effect on the 1st-of-the-month run.
+
+4. **`raw.*` table schema is owned by the Python DDL, not by dbt.** If you
+   `DROP TABLE` one of those manually, the next `sync_wge.py` run will fail
+   loudly. Re-run the DDL script first, then the ingest.
+
 ## Secrets policy
 
 - `.env` and `profiles.yml` are gitignored. Never commit them.
