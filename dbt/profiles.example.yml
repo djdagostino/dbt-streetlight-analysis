@@ -2,6 +2,10 @@
 #
 # Real values live in .env (gitignored). This file is committed and serves as
 # a reference for anyone cloning the repo. Do NOT put credentials here.
+#
+# Auth: configured for SQL authentication (user/password from .env).
+# To switch to Windows integrated auth: comment out the user/password lines
+# below and replace with  `windows_login: true`.
 
 streetlight_rental:
   target: dev
@@ -13,13 +17,8 @@ streetlight_rental:
       port: 1433
       database: "{{ env_var('WAREHOUSE_DATABASE') }}"
       schema: dbo
-      # If WAREHOUSE_USER is set in .env, SQL auth; otherwise Windows auth.
-      {% if env_var('WAREHOUSE_USER', '') %}
       user:     "{{ env_var('WAREHOUSE_USER') }}"
       password: "{{ env_var('WAREHOUSE_PASSWORD') }}"
-      {% else %}
-      windows_login: true
-      {% endif %}
       encrypt: true
       trust_cert: true
       threads: 4
