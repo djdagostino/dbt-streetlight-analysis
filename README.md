@@ -27,8 +27,8 @@ Monthly kWh:
 
 Each mart holds **one month** of estimates — the MDM importers take a single
 month at a time. The month is chosen by the `report_month()` macro: it
-defaults to the calendar month before the run date (the container runs on the
-1st, so an unattended run produces the month that just ended) and can be
+defaults to the month of the run date (the container runs on the 1st, so an
+unattended run produces that month's estimated usage) and can be
 overridden with `dbt run --vars 'report_month: <1-12>'`.
 
 This project rebuilds the logic in SQL + dbt so it's repeatable, testable, and

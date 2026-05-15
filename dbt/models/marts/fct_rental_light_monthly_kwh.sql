@@ -6,7 +6,7 @@
 -- One row per active rental connection. Every column is varchar(50) and
 -- nullable, matching the importer's fixed file spec.
 --
--- Month is selected by report_month() — default is the previous calendar
+-- Month is selected by report_month() — default is the current calendar
 -- month; override with `dbt run --vars 'report_month: <1-12>'`.
 --
 -- DisConnectionDate is passed through as stored, including the 1900-01-01

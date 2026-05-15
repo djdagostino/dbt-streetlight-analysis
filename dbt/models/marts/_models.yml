@@ -22,7 +22,20 @@ models:
       Streetlight estimated kWh for a single month, formatted for the MDM
       Loss Analysis streetlight importer. One row per non-rental streetlight;
       all columns varchar(50). Month selected by the report_month() macro.
+
+      Streetlights have no real account or meter number, so [Account Number]
+      is a synthesized stable identifier: wge_number + '-' + object_id_1.
+      [Account Sub], [Sequence], [Rate Type] and [Disconnect Date] have no
+      streetlight source and are always NULL.
     columns:
+      - name: "Account Number"
+        description: |
+          Stable per-light identifier — wge_number + '-' + object_id_1 from
+          the GIS inventory. Unique per streetlight; object_id_1 carries the
+          uniqueness when wge_number is blank. Streetlights are not metered,
+          so this is a synthesized key, not a billing account number. Its
+          month-to-month stability depends on object_id_1 staying constant
+          across GIS exports.
       - name: "kWh"
         description: |
           Estimated kWh for the report month. NULL when the GIS row has

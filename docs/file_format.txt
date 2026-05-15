@@ -10,9 +10,9 @@ Each file carries a single month of estimated kWh -- there is no Month
 column. The dbt marts are filtered to one month by the report_month()
 macro:
 
-  Default : the calendar month before the run date. The container runs on
-            the 1st, so an unattended run produces the month that just
-            ended (run on May 1 -> April data).
+  Default : the month of the run date. The container runs on the 1st, so an
+            unattended run produces that month's estimated usage (a run on
+            June 1 produces June data).
   Override: dbt run --vars 'report_month: <1-12>'
 
 Hours-of-darkness data is year-agnostic, so the month is a bare number
@@ -50,7 +50,8 @@ Scope     : SubtypeCD in ('Streetlight', 'Decorative Streetlight')
 
   #  Column              Type         Null  Source
   -  ------------------  -----------  ----  ------------------------------
-  1  Account Number      varchar(50)  Y     always NULL (not metered)
+  1  Account Number      varchar(50)  Y     stable per-light identifier:
+                                            wge_number + '-' + object_id_1
   2  Account Sub         varchar(50)  Y     always NULL
   3  Sequence            varchar(50)  Y     always NULL
   4  Connect Date        varchar(50)  Y     DateInstalled from GIS (ISO);

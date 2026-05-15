@@ -6,11 +6,13 @@
 -- One row per non-rental streetlight. Every column is varchar(50) and
 -- nullable, matching the rental importer's convention.
 --
--- Rental-only fields (account, rate) have no source for streetlights and
--- are emitted as NULL. Substation / Feeder are parsed from the GIS circuit
--- code in stg_street_lights.
+-- Account Number is a stable per-light identifier — wge_number + object_id_1
+-- — since streetlights have no real account/meter number. The other
+-- rental-only fields (Account Sub, Sequence, Rate Type, Disconnect Date) have
+-- no streetlight source and are NULL. Substation / Feeder are parsed from the
+-- GIS circuit code in stg_street_lights.
 --
--- Month is selected by report_month() — default is the previous calendar
+-- Month is selected by report_month() — default is the current calendar
 -- month; override with `dbt run --vars 'report_month: <1-12>'`.
 
 with street as (
@@ -22,7 +24,7 @@ with street as (
 )
 
 select
-    cast(null as varchar(50))                       as [Account Number],
+    cast(concat(wge_number, '-', object_id_1) as varchar(50)) as [Account Number],
     cast(null as varchar(50))                       as [Account Sub],
     cast(null as varchar(50))                       as [Sequence],
     convert(varchar(50), date_installed, 23)        as [Connect Date],

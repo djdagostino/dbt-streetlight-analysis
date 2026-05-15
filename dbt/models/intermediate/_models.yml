@@ -1,10 +1,26 @@
 version: 2
 
 models:
+  - name: int_hours_of_darkness_monthly
+    description: |
+      Total hours of darkness per calendar month (1–12), summed from the
+      year-agnostic `hours_of_darkness_daily` seed. `monthly_darkness_hours`
+      is the "how long the light runs" term in every kWh estimate.
+
   - name: int_rental_light_monthly_kwh
     description: |
-      Tall: one row per (active rental connection, month_num).
-      Natural key — (location_id, equipment_id, month_num) — must be unique.
+      Estimated monthly kWh for rental lights — tall, one row per
+      (active rental connection, month_num).
+
+      Formula:
+        est_kwh = wattage × monthly_darkness_hours × fixed_mult / 1000
+
+      wattage is looked up from the `rate_wattage` seed by the connection's
+      current rate code (rate1); fixed_mult is the number of lights sharing
+      the connection. fct_rental_light_monthly_kwh filters this to a single
+      month via the report_month() macro.
+
+      Natural key — (location_id, equipment_id, month_num) — is unique.
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -15,8 +31,20 @@ models:
 
   - name: int_street_light_monthly_kwh
     description: |
-      Tall: one row per (non-rental streetlight, month_num).
-      Natural key — (object_id_1, month_num) — must be unique.
+      Estimated monthly kWh for non-rental streetlights — tall, one row per
+      (streetlight, month_num). In scope: subtype_cd of 'Streetlight' or
+      'Decorative Streetlight'.
+
+      est_kwh uses kwh_hr when it is a valid per-hour value (0 < kwh_hr <= 1):
+        kwh_hr × monthly_darkness_hours
+      otherwise it falls back to the nameplate wattage:
+        wattage × monthly_darkness_hours / 1000
+      and is NULL only when neither input is usable. The 0 < kwh_hr <= 1
+      guard rejects rows where wattage was mis-keyed into the kwh_hr column
+      (e.g. 39, 129) and treats kwh_hr = 0 / null as "not measured".
+
+      fct_street_light_monthly_kwh filters this to a single month via the
+      report_month() macro. Natural key — (object_id_1, month_num) — is unique.
     tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
