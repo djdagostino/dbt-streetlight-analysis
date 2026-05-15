@@ -1,0 +1,75 @@
+MDM Loss Analysis -- File Format Specification
+==============================================
+
+Two separate files, one per light population. Each has its own importer
+on the MDM side, so the column sets are NOT interchangeable.
+
+ONE MONTH PER FILE
+------------------
+Each file carries a single month of estimated kWh -- there is no Month
+column. The dbt marts are filtered to one month by the report_month()
+macro:
+
+  Default : the calendar month before the run date. The container runs on
+            the 1st, so an unattended run produces the month that just
+            ended (run on May 1 -> April data).
+  Override: dbt run --vars 'report_month: <1-12>'
+
+Hours-of-darkness data is year-agnostic, so the month is a bare number
+1-12 with no year component.
+
+
+FILE 1 -- RENTAL LIGHTS
+-----------------------
+dbt model : marts.fct_rental_light_monthly_kwh
+Grain     : one row per active rental connection
+Importer  : already built by the vendor -- this column set is fixed.
+
+  #  Column              Type         Null  Source
+  -  ------------------  -----------  ----  ------------------------------
+  1  LocationID          varchar(50)  Y     UIS customer location id
+  2  ConnectionDate      varchar(50)  Y     account connection date (ISO)
+  3  DisConnectionDate   varchar(50)  Y     account disconnection date;
+                                            1900-01-01 = still connected
+  4  EquipmentID         varchar(50)  Y     UIS equipment / asset tag
+  5  Rate1               varchar(50)  Y     current billing rate code
+  6  EquipClass          varchar(50)  Y     equipment class
+  7  Wattage             varchar(50)  Y     lamp wattage (rate_wattage seed)
+  8  KWH                 varchar(50)  Y     estimated kWh for the month
+
+  kWh formula: wattage x monthly_darkness_hours x fixed_mult / 1000
+  (fixed_mult counts the lights on one connection; it is used in the
+  calculation but is not an output column.)
+
+
+FILE 2 -- STREETLIGHTS
+----------------------
+dbt model : marts.fct_street_light_monthly_kwh
+Grain     : one row per non-rental streetlight
+Scope     : SubtypeCD in ('Streetlight', 'Decorative Streetlight',
+            'Off-Street Light')
+
+  #  Column              Type         Null  Source
+  -  ------------------  -----------  ----  ------------------------------
+  1  Account Number      varchar(50)  Y     always NULL (not metered)
+  2  Account Sub         varchar(50)  Y     always NULL
+  3  Sequence            varchar(50)  Y     always NULL
+  4  Connect Date        varchar(50)  Y     DateInstalled from GIS (ISO);
+                                            NULL if unrecorded
+  5  Disconnect Date     varchar(50)  Y     always NULL
+  6  Substation          varchar(50)  Y     first 2 chars of GIS circuit
+  7  Feeder              varchar(50)  Y     GIS circuit after first 2 chars
+  8  Rate Type           varchar(50)  Y     always NULL (not metered)
+  9  kWh                 varchar(50)  Y     estimated kWh for the month
+  10 Wattage             varchar(50)  Y     lamp wattage from GIS 'W'
+
+  kWh formula: COALESCE(kwh_hr x monthly_darkness_hours,
+                        wattage x monthly_darkness_hours / 1000)
+
+
+NOTES
+-----
+- Every column is varchar(50), nullable, in both files -- the rental
+  importer's fixed convention, mirrored on the streetlight file.
+- Dates are emitted ISO (yyyy-mm-dd).
+- kWh is NULL when no wattage / kwh_hr could be resolved for a light.

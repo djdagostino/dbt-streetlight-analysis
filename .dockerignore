@@ -30,5 +30,5 @@ Thumbs.db
 # Docs - keep image lean
 README.md
 
-# Activate.ps1 is a Windows shell helper; not relevant inside Linux container
-Activate.ps1
+# run.ps1 is a Windows launcher; the container invokes run.py directly
+run.ps1

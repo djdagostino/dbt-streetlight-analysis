@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: fct_rental_light_monthly_kwh
+    description: |
+      Rental-light estimated kWh for a single month, formatted for the MDM
+      Loss Analysis rental importer. One row per active rental connection;
+      all columns varchar(50). Month selected by the report_month() macro.
+    columns:
+      - name: "KWH"
+        description: |
+          Estimated kWh for the report month. NULL when no wattage could be
+          resolved (rate code not found in rate_wattage) — surfaced as a
+          warning, not an error, since the importer accepts NULL.
+        tests:
+          - not_null:
+              config:
+                severity: warn
+
+  - name: fct_street_light_monthly_kwh
+    description: |
+      Streetlight estimated kWh for a single month, formatted for the MDM
+      Loss Analysis streetlight importer. One row per non-rental streetlight;
+      all columns varchar(50). Month selected by the report_month() macro.
+    columns:
+      - name: "kWh"
+        description: |
+          Estimated kWh for the report month. NULL when the GIS row has
+          neither a usable kwh_hr nor a wattage — surfaced as a warning.
+        tests:
+          - not_null:
+              config:
+                severity: warn

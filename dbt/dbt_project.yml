@@ -45,3 +45,27 @@ seeds:
         month_num:      tinyint
         day_num:        tinyint
         darkness_hours: decimal(6,4)
+    street_lights:
+      # GIS asset inventory of WGE's physical streetlights (rental + non-rental).
+      # Loaded verbatim; staging filters to non-rental subtypes and splits circuit.
+      +column_types:
+        object_id_1:    int
+        object_id:      int
+        street:         varchar(64)
+        kwh_hr:         float
+        subtype_cd:     varchar(32)
+        manufacturer:   varchar(64)
+        model:          varchar(64)
+        light_type:     varchar(16)
+        image_path:     varchar(256)
+        date_installed: date
+        wge_number:     varchar(16)
+        latitude:       float
+        longitude:      float
+        pole:           varchar(32)
+        lumens:         int
+        wattage:        int
+        comments:       varchar(128)
+        bracket_type:   varchar(16)
+        banners:        varchar(32)
+        circuit:        varchar(16)

@@ -32,14 +32,14 @@ RUN pip install --no-cache-dir --upgrade pip \
  && pip install --no-cache-dir -r requirements.txt
 
 # ---------------------------------------------------------------------------
-# Project source (ingest + dbt). profiles.yml is NOT copied (gitignored / in
-# .dockerignore); we promote profiles.example.yml to profiles.yml below since
-# they're functionally identical (both env_var-driven).
+# Project source (run.py + ingest + dbt). profiles.yml is NOT copied (gitignored
+# / in .dockerignore); we promote profiles.example.yml to profiles.yml below
+# since they're functionally identical (both env_var-driven).
 # ---------------------------------------------------------------------------
+COPY run.py /app/run.py
 COPY ingest /app/ingest
 COPY dbt    /app/dbt
-RUN cp /app/dbt/profiles.example.yml /app/dbt/profiles.yml \
- && chmod +x /app/ingest/run.sh
+RUN cp /app/dbt/profiles.example.yml /app/dbt/profiles.yml
 
 # Pre-install dbt packages at build time so each run starts fast
 WORKDIR /app/dbt
@@ -53,4 +53,4 @@ ENV DBT_PROFILES_DIR=/app/dbt
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
-CMD ["/bin/bash", "/app/ingest/run.sh"]
+CMD ["python", "/app/run.py"]

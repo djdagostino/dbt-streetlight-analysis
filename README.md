@@ -2,21 +2,34 @@
 
 dbt + Python project that replaces the legacy *Rental Light Customers* Excel
 workbook with a queryable SQL Server data warehouse. The headline output is a
-fact mart estimating monthly kWh consumption for every active rental
-streetlight in WGE's UIS system — feeding MDM Loss Analysis.
+pair of fact marts estimating monthly kWh consumption — one for active rental
+lights, one for non-rental streetlights — each feeding its own MDM Loss
+Analysis importer.
 
 ## What this does
 
-WGE estimates kWh usage for unmetered rental streetlights using three inputs:
+WGE estimates kWh usage for two populations of unmetered lights from
+different upstream systems:
 
-1. **Connection information** — active light/customer records from UIS
-   (`WGE.dbo.CSM_Connection_Master` + `CSM_Equipment_Master` + `UM00403`)
-2. **Hours of darkness** — daily duration of darkness at Westfield, MA, per the
-   U.S. Naval Observatory
-3. **Wattage by rate code** — a small reference table mapping billing rate
-   codes to lamp wattages
+- **Rental lights** come from UIS billing (`CSM_Connection_Master` +
+  `CSM_Equipment_Master` + `UM00403`). The seed `rate_wattage.csv` maps
+  billing rate codes to lamp wattages.
+- **Non-rental streetlights** come from a GIS asset inventory
+  (`street_lights.csv`, sourced from engineering). Each row carries its own
+  wattage and a `kwh_hr` (kWh per hour) value; substation and feeder are
+  parsed from the GIS `circuit` code.
+- **Hours of darkness** are sourced from the U.S. Naval Observatory for
+  Westfield, MA (`hours_of_darkness_daily.csv`).
 
-Estimated monthly kWh = `wattage × hours_of_darkness_in_month × number_of_lights / 1000`.
+Monthly kWh:
+- Rental    : `wattage × monthly_darkness_hours × fixed_mult / 1000`
+- Street    : `COALESCE(kwh_hr × monthly_darkness_hours, wattage × monthly_darkness_hours / 1000)`
+
+Each mart holds **one month** of estimates — the MDM importers take a single
+month at a time. The month is chosen by the `report_month()` macro: it
+defaults to the calendar month before the run date (the container runs on the
+1st, so an unattended run produces the month that just ended) and can be
+overridden with `dbt run --vars 'report_month: <1-12>'`.
 
 This project rebuilds the logic in SQL + dbt so it's repeatable, testable, and
 queryable from any BI tool.
@@ -36,9 +49,9 @@ queryable from any BI tool.
                               <warehouse>.raw.csm_equipment_master      ┐
                               <warehouse>.raw.um00403                   │
                                                                         │
-   dbt/seeds/rate_wattage.csv          ─┐  dbt seed                     │
-   dbt/seeds/hours_of_darkness_daily.csv │  ────────►  <warehouse>.raw.*│
-                                        ─┘                              │
+   dbt/seeds/rate_wattage.csv           ─┐ dbt seed                     │
+   dbt/seeds/hours_of_darkness_daily.csv │ ────────►  <warehouse>.raw.* │
+   dbt/seeds/street_lights.csv          ─┘                              │
                                                                         │  dbt run
                                                                         ▼
                                                             staging  (views)
@@ -50,15 +63,17 @@ queryable from any BI tool.
 
 ## Repository layout
 
-The repo holds two sibling sub-projects (`dbt/` and `ingest/`) plus shared
-configuration at the root. The Python ingest and dbt project each live in
-their own directory and share one `.env`, one `.venv`, and one `Activate.ps1`.
+The repo holds two sibling sub-projects (`dbt/` and `ingest/`) plus the
+`run.py` entrypoint and shared configuration at the root. The Python ingest
+and dbt project each live in their own directory and share one `.env` and
+one `.venv`.
 
 ```
 .
 ├── .env                          # gitignored — real credentials
 ├── .env.example                  # committed template
-├── Activate.ps1                  # PS bootstrap: venv + .env + DBT_*_DIR
+├── run.py                        # pipeline entrypoint — sync + dbt build
+├── run.ps1                        # Windows launcher for run.py
 ├── README.md
 ├── .venv/                        # gitignored — shared Python env
 │
@@ -67,13 +82,15 @@ their own directory and share one `.env`, one `.venv`, and one `Activate.ps1`.
 │   ├── packages.yml              # dbt_utils
 │   ├── profiles.yml              # gitignored — reads .env via env_var()
 │   ├── profiles.example.yml      # committed template
+│   ├── macros/                   # report_month + schema-name override
 │   ├── models/
 │   │   ├── staging/              # one stg_* per raw table or seed (views)
 │   │   ├── intermediate/         # joins, latest-rate, monthly aggregates (views)
-│   │   └── marts/                # business-facing tables (TODO)
+│   │   └── marts/                # business-facing fact tables
 │   └── seeds/
 │       ├── hours_of_darkness_daily.csv     # 365 rows, year-agnostic
-│       └── rate_wattage.csv                # 16 rows, rate code → wattage
+│       ├── rate_wattage.csv                # 16 rows, rate code → wattage
+│       └── street_lights.csv               # 5,706 rows, GIS asset inventory
 │
 └── ingest/                       # the Python loader
     ├── sync_wge.py               # WGE → warehouse.raw.* replication script
@@ -82,13 +99,13 @@ their own directory and share one `.env`, one `.venv`, and one `Activate.ps1`.
         └── 02_create_raw_tables.sql
 ```
 
-`Activate.ps1` sets `DBT_PROJECT_DIR` and `DBT_PROFILES_DIR` to `dbt\`, so
-`dbt run` / `dbt seed` / `dbt test` work from anywhere in the repo — no need
-to `cd dbt`.
+`run.py` loads `.env` and points dbt at `dbt/` (via `DBT_PROJECT_DIR` /
+`DBT_PROFILES_DIR`) before doing anything — there's no shell activation to
+remember, and dbt works regardless of the current directory.
 
 ## Prerequisites
 
-- Python 3.12 with the project venv at `.venv/` (pyodbc + dbt-sqlserver installed)
+- Python 3.12 (first-time setup creates the `.venv/` with pyodbc + dbt-sqlserver)
 - PowerShell on Windows
 - SQL Server ODBC Driver 17 or 18
   (check with `Get-OdbcDriver | Where-Object Name -like '*SQL Server*'`)
@@ -99,12 +116,13 @@ to `cd dbt`.
 ## First-time setup
 
 ```powershell
-# 1. Create your local .env from the template
+# 1. Create the shared virtualenv and install dependencies
+python -m venv .venv
+.\.venv\Scripts\pip install -r requirements.txt
+
+# 2. Create your local .env from the template
 Copy-Item .env.example .env
 # …then edit .env to fill in WGE_* and WAREHOUSE_* values
-
-# 2. Activate the session (loads venv + .env, sets DBT_PROFILES_DIR)
-. .\Activate.ps1
 ```
 
 Then in SSMS (or sqlcmd), connected to your warehouse DB, run once:
@@ -114,22 +132,29 @@ ingest\ddl\01_create_raw_schema.sql
 ingest\ddl\02_create_raw_tables.sql
 ```
 
-Verify and bootstrap dbt:
+Verify the connection, then do the first full run:
 
 ```powershell
-dbt debug          # validates the warehouse connection
-dbt deps           # installs dbt_utils
-dbt seed           # loads rate_wattage and hours_of_darkness_daily
+.\run.ps1 debug    # validates the warehouse connection (dbt debug)
+.\run.ps1          # installs dbt_utils, syncs WGE, runs dbt build
 ```
 
 ## Day-to-day workflow
 
-```powershell
-. .\Activate.ps1                # once per shell session
+One command runs the whole pipeline — refresh `raw.*` from WGE, then
+`dbt build` (seed → run → test, with every seed CSV reloaded):
 
-python ingest\sync_wge.py       # refresh raw.* from WGE (seconds for ~300 rows)
-dbt run                         # rebuild staging → intermediate → marts
-dbt test                        # run not_null / unique / relationships tests
+```powershell
+.\run.ps1
+```
+
+`run.ps1` forwards any arguments straight to dbt, with `.env` and the dbt
+project already wired up — handy for iterating on a single model:
+
+```powershell
+.\run.ps1 run  -s fct_street_light_monthly_kwh   # rebuild one model
+.\run.ps1 test -s fct_street_light_monthly_kwh   # test it
+.\run.ps1 build --vars 'report_month: 3'         # build for a specific month
 ```
 
 ## Configuration reference (.env)
@@ -161,14 +186,16 @@ All settings live in `.env`. They're read by both the Python script and
 
 - `stg_csm_connection_master`, `stg_csm_equipment_master`, `stg_um00403` — UIS sources
 - `stg_rate_wattage`, `stg_hours_of_darkness_daily` — reference seeds
+- `stg_street_lights` — GIS asset inventory; normalizes a source typo and splits `circuit` into `substation` / `feeder`
 - `int_connection_information` — active rental-light connections with current rate (replicates the legacy UIS active-streetlight query)
 - `int_hours_of_darkness_monthly` — daily darkness summed to monthly totals
+- `int_rental_light_monthly_kwh` — tall: one row per (rental connection, month)
+- `int_street_light_monthly_kwh` — tall: one row per (non-rental streetlight, month); applies the kwh_hr → wattage fallback
+- `fct_rental_light_monthly_kwh` — rental file: one row per active rental connection for the selected month, 8 columns, all `varchar(50)`
+- `fct_street_light_monthly_kwh` — streetlight file: one row per non-rental streetlight for the selected month, 10 columns, all `varchar(50)`
 
-### Planned
-
-- `fct_rental_light_monthly_kwh` — one row per `(location_id, year_month)` with
-  `wattage × hours_of_darkness × fixed_mult / 1000` as `est_kwh`. Filtered to
-  months where the connection was active.
+Both marts filter their tall intermediate to a single month via `report_month()`.
+Column shapes match the MDM Loss Analysis importers — see `docs/file_format.txt`.
 
 ## Data sources
 
@@ -188,6 +215,7 @@ Pulled by `sync_wge.py`, filtered to `LEFT(Equipment, 2) = 'zz'` at ingest:
 |---|---|---|
 | `rate_wattage.csv` | 16 | Maps billing rate codes (e.g. `E0250C`) to lamp wattage + light type |
 | `hours_of_darkness_daily.csv` | 365 | Daily duration of darkness at Westfield MA (N 42°07′, W 72°45′), U.S. Naval Observatory. Static; applies to any year. |
+| `street_lights.csv` | 5,706 | GIS asset inventory of WGE streetlights. Source-of-truth for non-rental kWh: `subtype_cd`, `circuit` (→ substation/feeder), `kwh_hr`, `wattage`, `light_type`, `date_installed`. Re-export the workbook to refresh. |
 
 ## Conventions
 
@@ -210,11 +238,11 @@ of each month.
 
 | File | Purpose |
 |---|---|
-| `Dockerfile` | `python:3.12-slim` + MS ODBC Driver 17 + pinned Python deps + project source. CMD runs `ingest/run.sh`. |
+| `Dockerfile` | `python:3.12-slim` + MS ODBC Driver 17 + pinned Python deps + project source. CMD runs `run.py`. |
 | `requirements.txt` | Python deps pinned to match the dev venv. |
 | `.dockerignore` | Excludes `.env`, `.venv`, dbt build artifacts, and the local `profiles.yml` from the image. |
-| `ingest/run.sh` | Container entrypoint: `sync_wge.py` → `dbt seed` → `dbt run` → `dbt test`. |
-| `docker-compose.yml` | Two services: `streetlight-ingest` (sleeps + holds env vars) and `ofelia` (runs `bash /app/ingest/run.sh` inside ingest on schedule). |
+| `run.py` | Pipeline entrypoint: `sync_wge.py` → `dbt build`. The same file is used locally and in the container. |
+| `docker-compose.yml` | Two services: `streetlight-ingest` (sleeps + holds env vars) and `ofelia` (runs `python /app/run.py` inside ingest on schedule). |
 
 ### Build and push the image
 
@@ -247,17 +275,17 @@ After `docker compose up -d`:
 - `streetlight-ingest` is running `sleep infinity` (holds env + filesystem)
 - `streetlight-ofelia` is watching the docker socket
 - On `0 0 6 1 * *` (06:00 UTC on the 1st of each month), ofelia executes
-  `bash /app/ingest/run.sh` inside the ingest container
+  `python /app/run.py` inside the ingest container
 
 ### Test the schedule manually
 
 To trigger a run on demand without waiting for the cron:
 
 ```bash
-docker exec streetlight-ingest bash /app/ingest/run.sh
+docker exec streetlight-ingest python /app/run.py
 ```
 
-That executes the same script ofelia would, with the same env vars.
+That executes the same entrypoint ofelia would, with the same env vars.
 
 ### Logs
 
@@ -289,9 +317,8 @@ to write. Edit the model, run dbt, done.
 # 1. Edit a .sql or .csv file in dbt/
 
 # 2. Iterate locally — your venv hits the SAME warehouse the container does
-. .\Activate.ps1
-dbt run  -s <model_name>          # rebuild just the model you changed
-dbt test -s <model_name>          # run its tests
+.\run.ps1 run  -s <model_name>    # rebuild just the model you changed
+.\run.ps1 test -s <model_name>    # run its tests
 
 # 3. Verify in SSMS:
 #    SELECT TOP 10 * FROM <schema>.<model_name>
@@ -311,23 +338,20 @@ docker compose pull
 docker compose up -d
 ```
 
-**Concrete example — adding `light_type` to the mart:**
+**Concrete example — adding `light_type` to the streetlight mart:**
 
 ```sql
--- in dbt/models/marts/fct_rental_light_monthly_kwh.sql
-
--- conn_w CTE already joins stg_rate_wattage; just expose more columns:
-rw.light_type,
-
--- in the final SELECT, add:
-light_type as [LightType],
-
--- in the GROUP BY, add:
-light_type,
+-- 1. int_street_light_monthly_kwh.sql already selects light_type from
+--    stg_street_lights — no change needed there.
+-- 2. In dbt/models/marts/fct_street_light_monthly_kwh.sql, add it to the
+--    final SELECT:
+cast(light_type as varchar(50)) as [LightType],
 ```
 
-Then `dbt run -s fct_rental_light_monthly_kwh` and check the new column in
-SSMS. If it looks right, commit and cut a new image tag.
+Then `dbt run -s +fct_street_light_monthly_kwh` (the `+` rebuilds upstream
+deps) and check the new column in SSMS. If it looks right, commit and cut a
+new image tag. Note: the MDM importers expect a fixed column set, so confirm
+with the vendor before changing a mart's shape.
 
 ### Category B — schema changes in `raw.*`
 
@@ -354,8 +378,7 @@ Python ingest and the dbt layers, so coordination is required.
 # 6. Update downstream intermediate / mart models as needed
 
 # 7. Test locally:
-python ingest/sync_wge.py
-dbt run
+.\run.ps1
 
 # 8. Commit, rebuild image with bumped tag, push, deploy
 ```
@@ -390,10 +413,10 @@ Two places to update the tag for each release:
    `dev` → `StreetLightAnalytics_Dev`, `prod` → `StreetLightAnalytics`) and
    run `dbt run --target dev` for iteration. The container always uses `prod`.
 
-2. **`dbt seed` reloads CSVs every container run.** Edit a CSV in
-   `dbt/seeds/` → the next scheduled run will reload it. Your local
-   PowerShell-driven runs only pick up seed changes when you re-run
-   `dbt seed` yourself.
+2. **Seeds reload on every run.** `run.py` calls `dbt build`, which reloads
+   every CSV in `dbt/seeds/` — locally and in the container alike. Edit a
+   seed and the next run picks it up automatically. (A seed *column-type*
+   change in `dbt_project.yml` still needs `.\run.ps1 build --full-refresh`.)
 
 3. **GitHub is the source of truth for code; Docker Hub is for what's
    deployed.** Pushing to GitHub doesn't update production. The image has to

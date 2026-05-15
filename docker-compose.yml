@@ -5,7 +5,7 @@
 #      Stays alive (sleep infinity) so ofelia can exec into it on schedule.
 #   2. ofelia: docker-native cron scheduler. Reads its job config from
 #      labels on the ingest service. On the 1st of each month at 06:00 UTC,
-#      it runs `bash /app/ingest/run.sh` inside the ingest container.
+#      it runs `python /app/run.py` inside the ingest container.
 #
 # Deployment on the server:
 #   1. Place this file + .env (production values) in a directory
@@ -26,14 +26,14 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    # Keep alive so ofelia can exec the run.sh script on schedule.
+    # Keep alive so ofelia can exec the pipeline on schedule.
     command: ["sleep", "infinity"]
     labels:
       ofelia.enabled: "true"
       # cron expression (ofelia uses 6-field cron: sec min hour day month dow)
       # 0 0 6 1 * *  =  06:00 UTC on the 1st of every month
       ofelia.job-exec.monthly-refresh.schedule: "0 0 6 1 * *"
-      ofelia.job-exec.monthly-refresh.command: "bash /app/ingest/run.sh"
+      ofelia.job-exec.monthly-refresh.command: "python /app/run.py"
       ofelia.job-exec.monthly-refresh.tty: "false"
       ofelia.job-exec.monthly-refresh.no-overlap: "true"
 

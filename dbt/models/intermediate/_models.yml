@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: int_rental_light_monthly_kwh
+    description: |
+      Tall: one row per (active rental connection, month_num).
+      Natural key — (location_id, equipment_id, month_num) — must be unique.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - location_id
+              - equipment_id
+              - month_num
+
+  - name: int_street_light_monthly_kwh
+    description: |
+      Tall: one row per (non-rental streetlight, month_num).
+      Natural key — (object_id_1, month_num) — must be unique.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - object_id_1
+              - month_num
