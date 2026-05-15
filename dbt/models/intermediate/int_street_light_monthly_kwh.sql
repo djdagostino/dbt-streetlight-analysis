@@ -3,8 +3,9 @@
 -- Estimated monthly kWh for non-rental streetlights (sourced from the GIS
 -- inventory seed). Tall: one row per (light, month).
 --
--- Scope filter: subtype_cd in the three non-rental categories. Rental lights
--- live in the seed too but are handled by int_rental_light_monthly_kwh.
+-- Scope filter: subtype_cd in ('Streetlight', 'Decorative Streetlight').
+-- Rental lights and off-street lights live in the seed too but are out of
+-- scope here — rental kWh is handled by int_rental_light_monthly_kwh.
 --
 -- kWh formula, with fallback:
 --   1. If kwh_hr is a valid per-hour kWh value (0 < kwh_hr <= 1):
@@ -19,7 +20,7 @@ with street_lights as (
 
     select *
     from {{ ref('stg_street_lights') }}
-    where subtype_cd in ('Streetlight', 'Decorative Streetlight', 'Off-Street Light')
+    where subtype_cd in ('Streetlight', 'Decorative Streetlight')
 
 ),
 

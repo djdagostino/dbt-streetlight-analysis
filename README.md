@@ -186,7 +186,7 @@ All settings live in `.env`. They're read by both the Python script and
 
 - `stg_csm_connection_master`, `stg_csm_equipment_master`, `stg_um00403` — UIS sources
 - `stg_rate_wattage`, `stg_hours_of_darkness_daily` — reference seeds
-- `stg_street_lights` — GIS asset inventory; normalizes a source typo and splits `circuit` into `substation` / `feeder`
+- `stg_street_lights` — GIS asset inventory; splits `circuit` into `substation` / `feeder`
 - `int_connection_information` — active rental-light connections with current rate (replicates the legacy UIS active-streetlight query)
 - `int_hours_of_darkness_monthly` — daily darkness summed to monthly totals
 - `int_rental_light_monthly_kwh` — tall: one row per (rental connection, month)

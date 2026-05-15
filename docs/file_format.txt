@@ -46,8 +46,7 @@ FILE 2 -- STREETLIGHTS
 ----------------------
 dbt model : marts.fct_street_light_monthly_kwh
 Grain     : one row per non-rental streetlight
-Scope     : SubtypeCD in ('Streetlight', 'Decorative Streetlight',
-            'Off-Street Light')
+Scope     : SubtypeCD in ('Streetlight', 'Decorative Streetlight')
 
   #  Column              Type         Null  Source
   -  ------------------  -----------  ----  ------------------------------
