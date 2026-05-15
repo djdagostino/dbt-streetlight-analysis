@@ -85,10 +85,15 @@ The MDM importers take a single month at a time, so each mart holds **one
 month** and has no Month column. The month is chosen by the `report_month()`
 macro:
 
-- **Default** — the month *of* the run date. The pipeline runs on the 1st of
-  each month, so an unattended run produces that month's estimated usage
-  (a June 1 run produces June data).
+- **Default** — the month *of* the run date. A run on any day of May
+  produces the full May estimate; a June run produces June, and so on.
 - **Override** — `dbt run --vars 'report_month: <1-12>'`.
+
+The kWh value is the estimate for the **whole calendar month** — every night
+of darkness in that month applied to each light's power draw. It is a
+forecast, not a real-time or metered reading, so it does **not** depend on
+how far into the month the pipeline runs: a run on the 1st, the 13th, or the
+last day of May all produce the same full-May figure.
 
 ---
 

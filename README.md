@@ -27,9 +27,13 @@ Monthly kWh:
 
 Each mart holds **one month** of estimates — the MDM importers take a single
 month at a time. The month is chosen by the `report_month()` macro: it
-defaults to the month of the run date (the container runs on the 1st, so an
-unattended run produces that month's estimated usage) and can be
-overridden with `dbt run --vars 'report_month: <1-12>'`.
+defaults to the month of the run date and can be overridden with
+`dbt run --vars 'report_month: <1-12>'`.
+
+The kWh figure is the estimate for the **whole calendar month** — a forecast
+from a fixed seasonal darkness profile, not a real-time or metered reading.
+It does not depend on which day the pipeline runs: a run on the 1st, the
+13th, or the last day of May all produce the same full-May estimate.
 
 This project rebuilds the logic in SQL + dbt so it's repeatable, testable, and
 queryable from any BI tool.

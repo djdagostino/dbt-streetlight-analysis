@@ -10,10 +10,13 @@ Each file carries a single month of estimated kWh -- there is no Month
 column. The dbt marts are filtered to one month by the report_month()
 macro:
 
-  Default : the month of the run date. The container runs on the 1st, so an
-            unattended run produces that month's estimated usage (a run on
-            June 1 produces June data).
+  Default : the month of the run date. A run on any day of the month
+            produces that whole month's estimate -- a run on June 1, or
+            June 13, both produce the full June estimate.
   Override: dbt run --vars 'report_month: <1-12>'
+
+The kWh value is a whole-calendar-month forecast, not a real-time or metered
+reading -- it does not change based on how far into the month the run happens.
 
 Hours-of-darkness data is year-agnostic, so the month is a bare number
 1-12 with no year component.
